@@ -19,11 +19,8 @@ export class UsersController {
 
      @Get()
         getUsers(){
-        const user = {
-            id: "dfgdfgdfg",
-            name: "Sebastian"
-        }
+        const users = this.usersService.findAllUsers();
 
-        return user
+        return users
     }
 }
