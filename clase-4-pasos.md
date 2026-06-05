@@ -414,6 +414,15 @@ La validacion debe estar lo mas cerca posible de la entrada de la app. No convie
 
 Confiar en que "el frontend ya manda bien los datos". El backend siempre debe validar.
 
+### Checkpoint rapido
+
+Si llegaste hasta aca, la app te deberia:
+
+- levantar leyendo `.env`
+- conectar a Mongo desde `AppModule`
+- seguir respondiendo los endpoints originales `POST /users/create` y `GET /users`
+- rechazar payloads invalidos antes de entrar al controller
+
 ---
 
 ## Seccion 8 - Paso 5: evolucionar el schema de usuario
@@ -426,6 +435,8 @@ Agregamos al usuario los campos necesarios para autenticacion y manejo basico de
 
 ```ts
 // src/users/schemas/user.schema.ts
+import { Prop, Schema } from "@nestjs/mongoose";
+
 export enum UserRole {
   USER = 'user',
   ADMIN = 'admin',
@@ -501,6 +512,8 @@ Dejamos de tener un solo DTO generico y creamos DTOs para cada caso de uso.
 
 ```ts
 // src/users/dto/create-user.dto.ts
+import { IsEmail, IsNotEmpty, IsString, Matches, MinLength } from "class-validator";
+
 export class CreateUserDto {
   @IsString()
   @IsNotEmpty()
@@ -525,6 +538,8 @@ export class CreateUserDto {
 
 ```ts
 // src/users/dto/login-user.dto.ts
+import { IsEmail, IsNotEmpty, IsString } from "class-validator";
+
 export class LoginUserDto {
   @IsEmail()
   mail: string;
@@ -537,6 +552,8 @@ export class LoginUserDto {
 
 ```ts
 // src/users/dto/user-response.dto.ts
+import { Exclude } from "class-transformer";
+
 export class UserResponseDto {
   id: string;
   name: string;
@@ -545,7 +562,7 @@ export class UserResponseDto {
   role: string;
 
   @Exclude()
-  password: string;
+  password?: string;
 }
 ```
 
@@ -574,8 +591,14 @@ El DTO de entrada no es el mismo que el DTO de salida.
 - `UserResponseDto` no deberia exponer password
 
 Esto refuerza una idea importante: cada caso de uso tiene un contrato distinto.
+Si devolvemos un objeto armado manualmente desde el service, ni siquiera hace falta incluir `password` en la respuesta final.
 
 Tambien es buena oportunidad para remarcar que no conviene devolver documentos crudos de Mongo "porque justo eso fue lo que devolvio la base". La salida de la API deberia ser una decision explicita.
+
+En este punto hay una consecuencia practica importante:
+
+- `POST /users/create` sigue existiendo
+- pero ahora el body tambien necesita `password`, porque `CreateUserDto` ya evoluciono para soportar autenticacion
 
 ### Error comun
 
@@ -615,6 +638,10 @@ Cuando convivien la version vieja y la nueva al mismo tiempo, aparecen varios pr
 No estamos borrando archivos por capricho.
 
 Los borramos porque ya existe una nueva fuente de verdad. Mantener codigo muerto aumenta la confusion, facilita imports equivocados y vuelve mucho mas dificil explicar la clase.
+El buen momento para borrarlos es cuando ya existen sus reemplazos en la nueva estructura y el modulo ya apunta a esos archivos nuevos.
+En este caso, eso pasa cuando ya tenemos `create-user.dto.ts`, `schemas/user.schema.ts`, `controllers/users.controller.ts` y `services/users.service.ts` conectados desde `users.module.ts` y desde los imports que dependen de ellos.
+Antes de borrar, conviene revisar especialmente `users.module.ts`, los imports de `CreateUserDto`, los imports de `User` y cualquier referencia al controller o service viejo.
+Como chequeo practico, si borras esos archivos y la app sigue compilando y levantando los endpoints equivalentes, entonces ya era el momento correcto.
 
 ### Error comun
 
@@ -627,18 +654,26 @@ Crear la carpeta nueva y dejar la vieja "por si acaso". Eso suele empeorar la ba
 ### Que hacemos
 
 Creamos una capa especifica que hable con Mongoose.
+Para este checkpoint conviene implementar tambien `findAll()`, porque `GET /users` todavia tiene que seguir funcionando desde la estructura nueva.
+Los demas metodos futuros pueden quedar comentados.
 
 ### Snippet
 
 ```ts
 // src/users/dao/users.mongoose.dao.ts
+import { Injectable } from "@nestjs/common";
+import { CreateUserDto } from "../dto/create-user.dto";
+import { User } from "../schemas/user.schema";
+import { InjectModel } from "@nestjs/mongoose";
+import { Model } from "mongoose"
+
 export interface IUsersDao {
   create(userData: CreateUserDto): Promise<User>;
-  findByEmail(email: string): Promise<User | null>;
-  findById(id: string): Promise<User | null>;
   findAll(): Promise<User[]>;
-  update(id: string, updateData: Partial<User>): Promise<User | null>;
-  delete(id: string): Promise<boolean>;
+//   findByEmail(email: string): Promise<User | null>;
+//   findById(id: string): Promise<User | null>;
+//   update(id: string, updateData: Partial<User>): Promise<User | null>;
+//   delete(id: string): Promise<boolean>;
 }
 
 @Injectable()
@@ -647,9 +682,14 @@ export class UsersMongooseDao implements IUsersDao {
     @InjectModel(User.name) private readonly userModel: Model<User>,
   ) {}
 
+
   async create(userData: CreateUserDto): Promise<User> {
     const createdUser = new this.userModel(userData);
     return createdUser.save();
+  }
+
+  async findAll(): Promise<User[]> {
+    return this.userModel.find().exec();
   }
 }
 ```
@@ -695,15 +735,23 @@ Agregamos una capa intermedia entre `service` y `dao`.
 
 ### Snippet
 
+Notar que la interface de UserDAO se importa con type
+Notar que para este checkpoint necesitamos `findAll()` porque `GET /users` sigue existiendo. Los otros metodos futuros pueden quedar comentados hasta el paso de auth.
+
 ```ts
 // src/users/repositories/users.repository.ts
+import { Inject, Injectable } from "@nestjs/common";
+import { CreateUserDto } from "../dto/create-user.dto";
+import { User } from "../schemas/user.schema";
+import type { IUsersDao } from "../dao/users.mongoose.dao";
+
 export interface IUsersRepository {
   create(userData: CreateUserDto): Promise<User>;
-  findByEmail(email: string): Promise<User | null>;
-  findById(id: string): Promise<User | null>;
   findAll(): Promise<User[]>;
-  update(id: string, updateData: Partial<User>): Promise<User | null>;
-  delete(id: string): Promise<boolean>;
+//   findByEmail(email: string): Promise<User | null>;
+//   findById(id: string): Promise<User | null>;
+//   update(id: string, updateData: Partial<User>): Promise<User | null>;
+//   delete(id: string): Promise<boolean>;
 }
 
 @Injectable()
@@ -711,9 +759,12 @@ export class UsersRepository implements IUsersRepository {
   constructor(
     @Inject('IUsersDao') private readonly dao: IUsersDao,
   ) {}
+  create(userData: CreateUserDto): Promise<User> {
+    return this.dao.create(userData);
+  }
 
-  async findByEmail(email: string): Promise<User | null> {
-    return this.dao.findByEmail(email);
+  findAll(): Promise<User[]> {
+    return this.dao.findAll();
   }
 }
 ```
@@ -755,11 +806,23 @@ Decir "esta capa no sirve porque solo pasa llamadas". En arquitectura, a veces e
 ### Que hacemos
 
 El `UsersService` deja de hablar con Mongoose y pasa a depender del repository.
+Reemplazar el que tenemos por este.
+Notar que la interface se importa con type.
 
 ### Snippet
 
 ```ts
 // src/users/services/users.service.ts
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+} from "@nestjs/common";
+import { CreateUserDto } from "../dto/create-user.dto";
+import { UserResponseDto } from "../dto/user-response.dto";
+import type { IUsersRepository } from "../repositories/users.repository";
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -770,7 +833,13 @@ export class UsersService {
   async create(createUserDto: CreateUserDto): Promise<UserResponseDto> {
     try {
       const user = await this.usersRepository.create(createUserDto);
-      return plainToClass(UserResponseDto, user.toObject());
+      return {
+        id: user.id,
+        name: user.name,
+        surname: user.surname,
+        mail: user.mail,
+        role: user.role,
+      };
     } catch (error: any) {
       if (error?.code === 11000) {
         throw new ConflictException('Email already exists');
@@ -778,6 +847,18 @@ export class UsersService {
 
       throw new InternalServerErrorException('Could not create user');
     }
+  }
+
+  async findAllUsers(): Promise<UserResponseDto[]> {
+    const users = await this.usersRepository.findAll();
+
+    return users.map((user) => ({
+      id: user.id,
+      name: user.name,
+      surname: user.surname,
+      mail: user.mail,
+      role: user.role,
+    }));
   }
 }
 ```
@@ -800,6 +881,9 @@ Ya no se ocupa de detalles de Mongoose.
 
 ### Aclaracion para reforzar
 
+Si usamos `plainToClass(...)`, conviene confirmar que la serializacion realmente este excluyendo `password`.
+Para este checkpoint, una alternativa muy clara es mapear manualmente la salida y devolver solo `id`, `name`, `surname`, `mail` y `role`.
+
 El `service` no es "otro archivo mas".
 
 Es el lugar donde concentramos reglas de negocio.
@@ -814,6 +898,15 @@ Esa separacion evita mezclar autenticacion con administracion de usuarios.
 ### Error comun
 
 Atrapar el error y hacer solo `console.log`. Eso oculta el problema y hace mas dificil depurarlo desde el cliente.
+
+### Checkpoint de refactor
+
+A esta altura, si ya migraste schema, DTOs, DAO, repository y service:
+
+- la app te deberia seguir levantando
+- `POST /users/create` y `GET /users` deberian seguir funcionando
+- esos endpoints ya deberian salir de la estructura nueva, no de los archivos viejos
+- si borraste los archivos viejos y todo sigue compilando, la migracion de estructura quedo bien
 
 ---
 
@@ -832,6 +925,14 @@ Centralizamos en un servicio la logica de autenticacion:
 
 ```ts
 // src/users/services/auth.service.ts
+import { ConflictException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { JwtService } from "@nestjs/jwt";
+import { CreateUserDto } from "../dto/create-user.dto";
+import { LoginUserDto } from "../dto/login-user.dto";
+import { User } from "../schemas/user.schema";
+import { UsersService } from "./users.service";
+import * as bcrypt from 'bcrypt';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -862,6 +963,131 @@ export class AuthService {
   }
 }
 ```
+
+## Agregar metodo findByEmail
+1. Notar que tras agregar el snippet de arriba typescript nos dice que no esta implementado el metodo `findByEmail` en la clase `UsersService`: hay que implementarlo. (Snippet 1 `findByEmail`)
+2. 
+
+### Snippet 1 findByEmail en User Service
+
+```ts
+// src/users/services/users.service.ts
+import { User } from "../schemas/user.schema";
+
+...
+...
+...
+
+// dentro de la clase UsersService un nuevo metodo:
+
+async findByEmail(email: string): Promise<User | null> { //notar que utiliza el modelo de User de la BD: esto es relevante posteriormente en el Snippet 4
+        return this.usersRepository.findByEmail(email);
+    }
+```
+
+### Snippet 2 findByEmail en User Repository 
+// src/users/repositories/users.repository.ts
+```ts
+import { Inject, Injectable } from "@nestjs/common";
+import { CreateUserDto } from "../dto/create-user.dto";
+import { User } from "../schemas/user.schema";
+import type { IUsersDao } from "../dao/users.mongoose.dao";
+
+export interface IUsersRepository {
+  create(userData: CreateUserDto): Promise<User>;
+  findByEmail(email: string): Promise<User | null>;
+//   findById(id: string): Promise<User | null>;
+//   findAll(): Promise<User[]>;
+//   update(id: string, updateData: Partial<User>): Promise<User | null>;
+//   delete(id: string): Promise<boolean>;
+}
+
+@Injectable()
+export class UsersRepository implements IUsersRepository {
+  constructor(
+    @Inject('IUsersDao') private readonly dao: IUsersDao,
+  ) {}
+    create(userData: CreateUserDto): Promise<User> {
+        return this.dao.create(userData)
+    }
+
+    findByEmail(mail: string): Promise<User | null> {
+        return this.dao.findByEmail(mail)
+
+    }
+
+}
+```
+
+
+### Snippet 3 findByEmail en User Dao 
+```ts
+import { Injectable } from "@nestjs/common";
+import { CreateUserDto } from "../dto/create-user.dto";
+import { User } from "../schemas/user.schema";
+import { InjectModel } from "@nestjs/mongoose";
+import { Model } from "mongoose"
+
+export interface IUsersDao {
+  create(userData: CreateUserDto): Promise<User>;
+  findByEmail(email: string): Promise<User | null>;
+//   findById(id: string): Promise<User | null>;
+//   findAll(): Promise<User[]>;
+//   update(id: string, updateData: Partial<User>): Promise<User | null>;
+//   delete(id: string): Promise<boolean>;
+}
+
+@Injectable()
+export class UsersMongooseDao implements IUsersDao {
+  constructor(
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+  ) {}
+
+
+  async create(userData: CreateUserDto): Promise<User> {
+    const createdUser = new this.userModel(userData);
+    return createdUser.save();
+  }
+
+    async findByEmail(email: string): Promise<User | null> {
+    return this.userModel.findOne({ mail: email }).exec();
+  }
+
+}
+```
+
+
+### Snippet 4 findByEmail: no hace falta agregar modelos en `providers`.
+Lo importante es que el modulo siga registrando `MongooseModule.forFeature(...)` y que `UsersService`, `UsersRepository` y `UsersMongooseDao` sigan declarados como providers para que la cadena de inyeccion funcione:
+// src/users/users.module.ts
+```ts
+import { Module } from '@nestjs/common';
+import { UsersController } from './controllers/users.controller';
+import { UsersService } from './services/users.service';
+import { MongooseModule } from '@nestjs/mongoose';
+import { User, UserSchema } from './schemas/user.schema';
+import { UsersMongooseDao } from './dao/users.mongoose.dao';
+import { UsersRepository } from './repositories/users.repository';
+
+@Module({
+  imports: [
+        MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+  ],
+  controllers: [UsersController],
+  providers: [
+    UsersService,
+    {
+      provide: 'IUsersDao',
+      useClass: UsersMongooseDao,
+    },
+    {
+      provide: 'IUsersRepository',
+      useClass: UsersRepository,
+    },]
+})
+export class UsersModule {}
+```
+
 
 ### Por que lo hacemos
 
@@ -907,11 +1133,11 @@ Hashear tambien en login. En login no se hashea el password para guardar, se com
 
 ---
 
-## Seccion 15 - Paso 12: generar JWT en login
+## Seccion 15 - Paso 12: En el servicio AuthService generar JWT en login
 
 ### Que hacemos
-
-Cuando el login es valido, devolvemos un token firmado.
+Agregamos un nueo metodo en la clase Auth Service.
+Responsabilidad del nuevo metodo: Cuando el login es valido, devolvemos un token firmado.
 
 ### Snippet
 
@@ -986,11 +1212,23 @@ Poner la password, datos enormes o informacion sensible extra en el payload del 
 ### Que hacemos
 
 Definimos como se valida un token JWT entrante.
+Creamos carpeta stretegies (las strategies son un patron de diseño que implementa logica de cierta manera)
 
 ### Snippet
 
 ```ts
 // src/users/strategies/jwt.strategy.ts
+import { Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { PassportStrategy } from "@nestjs/passport";
+import { ExtractJwt, Strategy } from "passport-jwt";
+
+interface JwtPayload {
+  sub: string;
+  email: string;
+  role: string;
+}
+
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private readonly configService: ConfigService) {
@@ -1101,7 +1339,7 @@ Usamos `@UseGuards(JwtAuthGuard)` en rutas que no deben ser publicas.
 ```ts
 // src/users/controllers/users.controller.ts
 @Controller('users')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard)   // <----------------- Implementamos el guard en todos los endpoints del controller: proteje a los endpoints haciendo necesario el JWT
 export class UsersController {
   @Get()
   async getUsers() {
@@ -1110,14 +1348,15 @@ export class UsersController {
 }
 ```
 
-```ts
-// src/users/controllers/auth.controller.ts
-@UseGuards(JwtAuthGuard)
-@Get('profile')
-async getProfile(@Request() req: { user: { userId: string } }) {
-  return this.authService.getProfile(req.user.userId);
-}
-```
+### Refactorización estructura de controllers de Users: Auth Controller
+
+1. Creamos una carpeta controller y movemos el users.controller dentro (no olvidar dar el OK si pregunta si queremos actualizar los imports que utilizan users.controller)
+2. Creamos un nuevo controller para auth dentro de la carpeta: disponibilizar rutas para los endpoints de autenticación. `register` y `login` son publicos; `profile` si queda protegido.
+
+Importante: aca no estamos eliminando la funcionalidad de `GET /users`.
+Ese endpoint sigue existiendo, pero se mueve al nuevo `controllers/users.controller.ts` y pasa a estar protegido con JWT.
+El momento correcto para borrar el `users.controller.ts` viejo es cuando `users.module.ts` ya importa el controller nuevo y los imports dependientes quedaron actualizados.
+
 
 ### Por que lo hacemos
 
@@ -1165,10 +1404,19 @@ Separamos los endpoints de autenticacion del CRUD de usuarios.
 
 ### Snippet
 
+
 ```ts
 // src/users/controllers/auth.controller.ts
+import { Controller, Post, Body, UseGuards, Get, Request } from '@nestjs/common';
+import { AuthService } from '../services/auth.service';
+import { CreateUserDto } from '../dto/create-user.dto';
+import { LoginUserDto } from '../dto/login-user.dto';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+
 @Controller('auth')
 export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
   @Post('register')
   async register(@Body() createUserDto: CreateUserDto) {
     return this.authService.register(createUserDto);
@@ -1178,9 +1426,44 @@ export class AuthController {
   async login(@Body() loginUserDto: LoginUserDto) {
     return this.authService.login(loginUserDto);
   }
+
+  @UseGuards(JwtAuthGuard)    //<---- implementaria guard
+  @Get('profile')
+  async getProfile(@Request() req: { user: { userId: string } }) {
+    return this.authService.getProfile(req.user.userId);
+  }
 }
 ```
 
+// en AuthService agregamos el metodo getProfile
+
+```ts
+async getProfile(userId: string) {
+  return this.usersService.getUserResponseById(userId);
+}
+```
+
+//lo mismo en UserService (ver que el servicio de Auth llama al de user)
+
+```ts
+     async findById(userId: string): Promise<User | null> {
+        return this.usersRepository.findById(userId);
+    }
+```
+
+//en UserREpository: (agregar primero en interface)
+```ts
+    findById(userId: string): Promise<User | null> {
+        return this.dao.findById(userId)
+    }
+```
+
+//en DAO (agregar primero en interface)
+```ts
+    async findById(userID: string): Promise<User | null> {
+    return this.userModel.findById(userID).exec();
+  }
+```
 ### Por que lo hacemos
 
 Aunque `auth` y `users` pertenezcan al mismo dominio, sus endpoints representan intenciones distintas:
@@ -1215,63 +1498,7 @@ No deberia:
 
 Meter login dentro de `users.controller.ts` por comodidad y terminar con un controller sin cohesion.
 
-### Prueba en Postman - `POST /auth/register`
 
-Una vez que ya tenemos `AuthController` + `AuthService` para registro, podemos probar este flujo en Postman.
-
-```text
-Method: POST
-URL: http://localhost:3000/auth/register
-Headers:
-  Content-Type: application/json
-Body (raw / JSON):
-{
-  "name": "Ana",
-  "surname": "Lopez",
-  "mail": "ana.lopez@example.com",
-  "password": "ClaveSegura1!"
-}
-```
-
-### Que deberiamos ver
-
-- si sale bien: un usuario creado sin exponer password
-- si el mail ya existe: `409 Conflict`
-- si el body no cumple el DTO: `400 Bad Request`
-
-### Que esta pasando por detras
-
-- Postman envia JSON al endpoint
-- Nest valida con `CreateUserDto`
-- `AuthController` delega en `AuthService`
-- `AuthService` revisa si el mail existe
-- si no existe, hashea password
-- luego se crea el usuario en Mongo
-
-### Prueba en Postman - `POST /auth/login`
-
-Despues del registro, podemos probar login con el mismo usuario.
-
-```text
-Method: POST
-URL: http://localhost:3000/auth/login
-Headers:
-  Content-Type: application/json
-Body (raw / JSON):
-{
-  "mail": "ana.lopez@example.com",
-  "password": "ClaveSegura1!"
-}
-```
-
-### Que deberiamos ver
-
-- si sale bien: un `access_token` y datos del usuario
-- si las credenciales fallan: `401 Unauthorized`
-
-### Sugerencia practica para Postman
-
-Copiar el valor de `access_token`, porque lo vamos a usar en los endpoints protegidos siguientes.
 
 ---
 
@@ -1285,6 +1512,21 @@ Conectamos controllers, services, providers custom, JWT y strategy dentro del mo
 
 ```ts
 // src/users/users.module.ts
+import { Module } from '@nestjs/common';
+import { UsersController } from './controllers/users.controller';
+import { UsersService } from './services/users.service';
+import { MongooseModule } from '@nestjs/mongoose';
+import { User, UserSchema } from './schemas/user.schema';
+import { UsersMongooseDao } from './dao/users.mongoose.dao';
+import { UsersRepository } from './repositories/users.repository';
+import { PassportModule } from '@nestjs/passport';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { AuthController } from './controllers/auth.controller';
+import { AuthService } from './services/auth.service';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { JwtStrategy } from './strategies/jwt.strategy';
+
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
@@ -1317,6 +1559,7 @@ Conectamos controllers, services, providers custom, JWT y strategy dentro del mo
   ],
 })
 export class UsersModule {}
+
 ```
 
 ### Por que lo hacemos
@@ -1336,6 +1579,74 @@ El modulo es donde Nest entiende:
 ### Error comun
 
 Olvidar registrar `JwtStrategy` en `providers`. Si eso pasa, el guard existe, pero Passport no sabe como validar el token.
+
+
+### Prueba en Postman - `POST /auth/register`
+
+Una vez que ya tenemos `AuthController` + `AuthService` para registro, podemos probar este flujo en Postman.
+
+```text
+Method: POST
+URL: http://localhost:<PORT_CONFIGURADO>/auth/register
+Headers:
+  Content-Type: application/json
+Body (raw / JSON):
+{
+  "name": "Ana",
+  "surname": "Lopez",
+  "mail": "ana.lopez@example.com",
+  "password": "ClaveSegura1!"
+}
+```
+
+### Que deberiamos ver
+
+- si sale bien: un usuario creado sin exponer password
+- si el mail ya existe: `409 Conflict`
+- si el body no cumple el DTO: `400 Bad Request`
+
+### Que esta pasando por detras
+
+- Postman envia JSON al endpoint
+- Nest valida con `CreateUserDto`
+- `AuthController` delega en `AuthService`
+- `AuthService` revisa si el mail existe
+- si no existe, hashea password
+- luego se crea el usuario en Mongo
+
+### Prueba en Postman - `POST /auth/login`
+
+Despues del registro, podemos probar login con el mismo usuario.
+
+```text
+Method: POST
+URL: http://localhost:<PORT_CONFIGURADO>/auth/login
+Headers:
+  Content-Type: application/json
+Body (raw / JSON):
+{
+  "mail": "ana.lopez@example.com",
+  "password": "ClaveSegura1!"
+}
+```
+
+### Que deberiamos ver
+
+- si sale bien: un `access_token` y datos del usuario
+- si las credenciales fallan: `401 Unauthorized`
+
+### Sugerencia practica para Postman
+
+Copiar el valor de `access_token`, porque lo vamos a usar en los endpoints protegidos siguientes.
+
+### Checkpoint de auth
+
+Si llegaste hasta aca, ya te deberia funcionar el flujo base de autenticacion:
+
+- `POST /auth/register`
+- `POST /auth/login`
+- obtencion de un `access_token` valido
+- uso de ese token para entrar a rutas protegidas como `GET /auth/profile`
 
 ---
 
@@ -1357,6 +1668,8 @@ Olvidar registrar `JwtStrategy` en `providers`. Si eso pasa, el guard existe, pe
 - `PUT /users/:id` protegido con JWT
 - `DELETE /users/:id` protegido con JWT
 
+Para `PUT /users/:id`, conviene agregar un `UpdateUserDto` con campos opcionales y volver a hashear `password` si llega en la actualizacion.
+
 ### Por que este cambio es importante
 
 La API deja de ser solo un CRUD simple y pasa a modelar mejor el dominio:
@@ -1369,6 +1682,15 @@ La API deja de ser solo un CRUD simple y pasa a modelar mejor el dominio:
 ### Buena practica
 
 Mostrar siempre el "antes" y el "despues" de las rutas. A quienes aprenden backend les ayuda mucho a conectar arquitectura con experiencia de consumo real.
+
+### Checkpoint final de endpoints
+
+En este punto, la app ya te deberia quedar con este comportamiento:
+
+- `register` y `login` publicos
+- `profile` protegido con JWT
+- `GET /users` protegido con JWT
+- si ya implementaste el resto del CRUD protegido, la API ya coincide con el estado final de la guia
 
 ### Pruebas en Postman - endpoints protegidos
 
