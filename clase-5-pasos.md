@@ -662,7 +662,7 @@ export class ProductsService {
     try {
       const product = await this.productsRepository.create({
         ...createProductDto,
-        ownerId,
+        ownerId: new Types.ObjectId(ownerId),,
         imagesBase64: createProductDto.imagesBase64 ?? [],
         isActive: true,
       });
