@@ -4,9 +4,10 @@ import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ProductsModule } from './products/products.module';
 
 @Module({
-  imports: [UsersModule,
+  imports: [UsersModule, ProductsModule,
 
     ConfigModule.forRoot({
       isGlobal: true,
@@ -17,7 +18,8 @@ import { MongooseModule } from '@nestjs/mongoose';
         uri: configService.get<string>('MONGODB_URI'),
       }),
       inject: [ConfigService],
-    })
+    }),
+    ProductsModule
   ],
   controllers: [AppController],
   providers: [AppService],
