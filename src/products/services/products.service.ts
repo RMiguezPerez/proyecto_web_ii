@@ -1,4 +1,5 @@
 import {
+  ForbiddenException,
   Inject,
   Injectable,
   InternalServerErrorException,
@@ -7,11 +8,13 @@ import {
 import { plainToClass } from 'class-transformer';
 import { UsersService } from '../../users/services/users.service';
 import { CreateProductDto } from '../dto/create-product.dto';
+import { ListProductsQueryDto } from '../dto/list-products-query.dto';
 import { ProductResponseDto } from '../dto/product-response.dto';
 import type { IProductsRepository } from '../repositories/products.repository';
 import { Product } from '../schemas/product.schema';
 import { PublicProductOwnerDto, PublicProductResponseDto } from '../dto/public-product-responde.dto';
 import { Types } from 'mongoose';
+import { UpdateProductDto } from '../dto/update-product.dto';
 
 
 @Injectable()
@@ -26,7 +29,6 @@ export class ProductsService {
     ownerId: string,
     createProductDto: CreateProductDto,
   ): Promise<ProductResponseDto> {
-
     try {
       const product = await this.productsRepository.create({
         ...createProductDto,
@@ -41,8 +43,8 @@ export class ProductsService {
     }
   }
 
-  async findPublic(): Promise<ProductResponseDto[]> {
-    const products = await this.productsRepository.findPublic();
+  async findPublic(query: ListProductsQueryDto = {}): Promise<ProductResponseDto[]> {
+    const products = await this.productsRepository.findPublic(query);
     return products.map((product) => this.toProductResponse(product));
   }
 
@@ -75,7 +77,68 @@ export class ProductsService {
       category: product.category,
       paymentOptions: product.paymentOptions,
       imagesBase64: product.imagesBase64,
-      isActive: product.isActive
+      isActive: product.isActive,
     });
   }
+
+
+
+  async findMine(ownerId: string): Promise<ProductResponseDto[]> {
+    const products = await this.productsRepository.findMine(ownerId);
+    return products.map((product) => this.toProductResponse(product));
+  }
+
+  async update(
+    productId: string,
+    userId: string,
+    updateProductDto: UpdateProductDto,
+  ): Promise<ProductResponseDto> {
+    await this.findOwnedEntityOrThrow(productId, userId);
+
+    const updatedProduct = await this.productsRepository.update(
+      productId,
+      updateProductDto,
+    );
+
+    if (!updatedProduct) {
+      throw new NotFoundException('Product not found');
+    }
+
+    return this.toProductResponse(updatedProduct);
+  }
+
+  async delete(productId: string, userId: string) {
+    await this.findOwnedEntityOrThrow(productId, userId);
+    await this.productsRepository.softDelete(productId);
+
+    return {
+      message: 'Product deleted successfully',
+    };
+  }
+
+  async findActiveEntityOrThrow(id: string): Promise<Product> {
+    const product = await this.productsRepository.findPublicById(id);
+
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    return product;
+  }
+
+  async findOwnedEntityOrThrow(id: string, userId: string): Promise<Product> {
+    const product = await this.productsRepository.findById(id);
+
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    if (product.ownerId.toString() !== userId) {
+      throw new ForbiddenException('You do not own this product');
+    }
+
+    return product;
+  }
+
+
 }

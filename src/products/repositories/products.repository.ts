@@ -1,12 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { Product } from '../schemas/product.schema';
 import type { IProductsDao } from '../dao/products.mongoose.dao';
+import { ListProductsQueryDto } from '../dto/list-products-query.dto';
+import { Product } from '../schemas/product.schema';
 
 export interface IProductsRepository {
   create(productData: Partial<Product>): Promise<Product>;
-  findPublic(): Promise<Product[]>;
+  findPublic(query: ListProductsQueryDto): Promise<Product[]>;
   findPublicById(id: string): Promise<Product | null>;
   findById(id: string): Promise<Product | null>;
+  findMine(ownerId: string): Promise<Product[]>;
+  update(id: string, updateData: Partial<Product>): Promise<Product | null>;
+  softDelete(id: string): Promise<Product | null>;
 }
 
 @Injectable()
@@ -20,8 +24,8 @@ export class ProductsRepository implements IProductsRepository {
     return this.dao.create(productData);
   }
 
-  async findPublic(): Promise<Product[]> {
-    return this.dao.findPublic();
+  async findPublic(query: ListProductsQueryDto): Promise<Product[]> {
+    return this.dao.findPublic(query);
   }
 
   async findPublicById(id: string): Promise<Product | null> {
@@ -30,5 +34,17 @@ export class ProductsRepository implements IProductsRepository {
 
   async findById(id: string): Promise<Product | null> {
     return this.dao.findById(id);
+  }
+
+  async findMine(ownerId: string): Promise<Product[]> {
+    return this.dao.findMine(ownerId);
+  }
+
+  async update(id: string, updateData: Partial<Product>): Promise<Product | null> {
+    return this.dao.update(id, updateData);
+  }
+
+  async softDelete(id: string): Promise<Product | null> {
+    return this.dao.softDelete(id);
   }
 }

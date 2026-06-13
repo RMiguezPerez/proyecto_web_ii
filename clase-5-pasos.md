@@ -25,6 +25,16 @@ Clave importante de esta clase:
 - cada checkpoint agrega una capacidad visible nueva
 - si algo falla, se puede volver al ultimo checkpoint estable
 
+### Referencia rapida para pruebas manuales
+
+Cuando en esta guia probemos con Postman o Thunder, asumir siempre esto:
+
+- endpoint publico: no necesita token
+- endpoint privado: necesita `Authorization: Bearer <access_token>`
+- el `access_token` sale de `POST /auth/login`
+- si recien registraste usuario, hace login despues de `POST /auth/register`
+- en Postman o Thunder podes cargarlo como Bearer Token o escribir el header manualmente
+
 La referencia funcional y tecnica de esta guia sale de:
 
 - `.kiro/specs/ecommerce-marketplace/requirements.md`
@@ -69,10 +79,10 @@ src/
 
 Endpoints ya disponibles:
 
-- `POST /auth/register`
-- `POST /auth/login`
-- `GET /auth/profile`
-- CRUD protegido de `users`
+- `POST /auth/register` (publico)
+- `POST /auth/login` (publico, devuelve `access_token`)
+- `GET /auth/profile` (privado, requiere `Authorization: Bearer <access_token>`)
+- CRUD protegido de `users` (privado, requiere JWT)
 
 ### Por que este punto de partida es bueno
 
@@ -124,7 +134,7 @@ src/products/
 │   ├── list-products-query.dto.ts
 │   ├── product-comment-response.dto.ts
 │   ├── product-response.dto.ts
-│   ├── public-product-response.dto.ts
+│   ├── public-product-responde.dto.ts
 │   └── update-product.dto.ts
 ├── repositories/
 │   ├── favorites.repository.ts
@@ -326,7 +336,7 @@ Definimos el documento principal del marketplace y el contrato de entrada/salida
 - `src/products/schemas/product.schema.ts`
 - `src/products/dto/create-product.dto.ts`
 - `src/products/dto/product-response.dto.ts`
-- `src/products/dto/public-product-response.dto.ts`
+- `src/products/dto/public-product-responde.dto.ts`
 
 ### Snippet
 
@@ -458,7 +468,7 @@ export class ProductResponseDto {
 ```
 
 ```ts
-// src/products/dto/public-product-response.dto.ts
+// src/products/dto/public-product-responde.dto.ts
 import { ProductResponseDto } from './product-response.dto';
 
 export class PublicProductOwnerDto {
@@ -506,6 +516,8 @@ Separar DTO de entrada y DTO de salida, aunque los campos se parezcan mucho.
 Guardar `ownerId` en el body del cliente.
 
 Ese dato tiene que salir del JWT, no de lo que mande el frontend.
+
+En el estado actual del repo, `req.user.userId` llega como `string` desde la `JwtStrategy` y la conversion a `Types.ObjectId` se hace dentro del service o del DAO cuando hace falta persistir o filtrar por owner.
 
 ---
 
@@ -637,12 +649,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { plainToClass } from 'class-transformer';
+import { Types } from 'mongoose';
 import { UsersService } from '../../users/services/users.service';
 import { CreateProductDto } from '../dto/create-product.dto';
 import {
   PublicProductOwnerDto,
   PublicProductResponseDto,
-} from '../dto/public-product-response.dto';
+} from '../dto/public-product-responde.dto';
 import { ProductResponseDto } from '../dto/product-response.dto';
 import type { IProductsRepository } from '../repositories/products.repository';
 import { Product } from '../schemas/product.schema';
@@ -662,7 +675,7 @@ export class ProductsService {
     try {
       const product = await this.productsRepository.create({
         ...createProductDto,
-        ownerId: new Types.ObjectId(ownerId),,
+        ownerId: new Types.ObjectId(ownerId),
         imagesBase64: createProductDto.imagesBase64 ?? [],
         isActive: true,
       });
@@ -707,9 +720,7 @@ export class ProductsService {
       category: product.category,
       paymentOptions: product.paymentOptions,
       imagesBase64: product.imagesBase64,
-      isActive: product.isActive,
-      createdAt: product.createdAt,
-      updatedAt: product.updatedAt,
+      isActive: product.isActive
     });
   }
 }
@@ -791,8 +802,8 @@ export class PublicProductsController {
 
 Separamos endpoints por contexto de acceso:
 
-- `products` para operaciones autenticadas
-- `public/products` para lectura publica
+- `products` para operaciones autenticadas (privado, con JWT)
+- `public/products` para lectura publica (publico, sin JWT)
 
 ### Concepto clave
 
@@ -868,9 +879,9 @@ Este paso termina de conectar la feature dentro de Nest:
 
 Al cerrar este checkpoint ya deberia funcionar:
 
-- `POST /products` con JWT
-- `GET /public/products`
-- `GET /public/products/:id`
+- `POST /products` (privado, requiere `Authorization: Bearer <access_token>`)
+- `GET /public/products` (publico)
+- `GET /public/products/:id` (publico)
 
 ### Payload de prueba para `POST /products`
 
@@ -889,12 +900,16 @@ Al cerrar este checkpoint ya deberia funcionar:
 
 ### Que deberia pasar
 
-1. Registrar usuario con `POST /auth/register`
-2. Loguear con `POST /auth/login`
-3. Copiar `access_token`
-4. Crear producto con `POST /products`
-5. Verlo desde `GET /public/products`
-6. Ver detalle desde `GET /public/products/:id`
+1. Registrar usuario con `POST /auth/register` (publico)
+2. Loguear con `POST /auth/login` (publico) y copiar `access_token`
+3. Crear producto con `POST /products` (privado) enviando `Authorization: Bearer <access_token>`
+4. Verlo desde `GET /public/products` (publico, sin token)
+5. Ver detalle desde `GET /public/products/:id` (publico, sin token)
+
+### Recordatorio para Postman o Thunder
+
+- `POST /products` es privado: sin Bearer token deberia responder `401`
+- `GET /public/products` y `GET /public/products/:id` son publicos: se prueban sin token
 
 ---
 
@@ -975,6 +990,8 @@ export class UpdateProductDto {
 }
 ```
 
+#### Este DTO es especifico para querys que vienen en URL.
+
 ```ts
 // src/products/dto/list-products-query.dto.ts
 import { Type } from 'class-transformer';
@@ -1019,7 +1036,7 @@ export class ListProductsQueryDto {
 
 Crear no es lo mismo que editar.
 
-Tampoco es lo mismo validar un body que validar query params.
+Tampoco es lo mismo validar un body que validar query params. 
 
 ### Concepto clave
 
@@ -1028,6 +1045,8 @@ El DTO de query nos permite aprovechar `ValidationPipe` tambien en el listado pu
 ---
 
 ### Paso 9 - Expandir DAO, repository y service para filtros, `mine`, update y delete
+
+Ya implementamos los DTO, ahora vamos a implementar los servicio y metodos para poder filtrar productos en base a querys. Tambien update y delete.
 
 ### Archivos a reemplazar
 
@@ -1041,9 +1060,20 @@ El DTO de query nos permite aprovechar `ValidationPipe` tambien en el listado pu
 // src/products/dao/products.mongoose.dao.ts
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { ListProductsQueryDto } from '../dto/list-products-query.dto';
 import { Product } from '../schemas/product.schema';
+
+type ProductPublicFilters = {
+  isActive: boolean;
+  category?: ListProductsQueryDto['category'];
+  paymentOptions?: ListProductsQueryDto['paymentOption'];
+  ownerId?: Types.ObjectId;
+  price?: {
+    $gte?: number;
+    $lte?: number;
+  };
+};
 
 export interface IProductsDao {
   create(productData: Partial<Product>): Promise<Product>;
@@ -1068,7 +1098,7 @@ export class ProductsMongooseDao implements IProductsDao {
   }
 
   async findPublic(query: ListProductsQueryDto): Promise<Product[]> {
-    const filters: FilterQuery<Product> = { isActive: true };
+    const filters: ProductPublicFilters = { isActive: true };
 
     if (query.category) {
       filters.category = query.category;
@@ -1079,7 +1109,7 @@ export class ProductsMongooseDao implements IProductsDao {
     }
 
     if (query.ownerId) {
-      filters.ownerId = query.ownerId;
+      filters.ownerId = new Types.ObjectId(query.ownerId);
     }
 
     if (query.minPrice !== undefined || query.maxPrice !== undefined) {
@@ -1094,7 +1124,10 @@ export class ProductsMongooseDao implements IProductsDao {
       }
     }
 
-    return this.productModel.find(filters).sort({ createdAt: -1 }).exec();
+    return this.productModel
+      .find(filters as Record<string, unknown>)
+      .sort({ createdAt: -1 })
+      .exec();
   }
 
   async findPublicById(id: string): Promise<Product | null> {
@@ -1106,7 +1139,10 @@ export class ProductsMongooseDao implements IProductsDao {
   }
 
   async findMine(ownerId: string): Promise<Product[]> {
-    return this.productModel.find({ ownerId }).sort({ createdAt: -1 }).exec();
+    return this.productModel
+      .find({ ownerId: new Types.ObjectId(ownerId) })
+      .sort({ createdAt: -1 })
+      .exec();
   }
 
   async update(
@@ -1188,13 +1224,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { plainToClass } from 'class-transformer';
+import { Types } from 'mongoose';
 import { UsersService } from '../../users/services/users.service';
 import { CreateProductDto } from '../dto/create-product.dto';
 import { ListProductsQueryDto } from '../dto/list-products-query.dto';
 import {
   PublicProductOwnerDto,
   PublicProductResponseDto,
-} from '../dto/public-product-response.dto';
+} from '../dto/public-product-responde.dto';
 import { ProductResponseDto } from '../dto/product-response.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
 import type { IProductsRepository } from '../repositories/products.repository';
@@ -1215,7 +1252,7 @@ export class ProductsService {
     try {
       const product = await this.productsRepository.create({
         ...createProductDto,
-        ownerId,
+        ownerId: new Types.ObjectId(ownerId),
         imagesBase64: createProductDto.imagesBase64 ?? [],
         isActive: true,
       });
@@ -1226,7 +1263,7 @@ export class ProductsService {
     }
   }
 
-  async findPublic(query: ListProductsQueryDto): Promise<ProductResponseDto[]> {
+  async findPublic(query: ListProductsQueryDto = {}): Promise<ProductResponseDto[]> {
     const products = await this.productsRepository.findPublic(query);
     return products.map((product) => this.toProductResponse(product));
   }
@@ -1348,6 +1385,8 @@ Las operaciones privadas usan `findById`.
 
 Eso evita confundir "producto existe" con "producto esta visible publicamente".
 
+Y es clave que la funcionalidad repetida en diferentes servicios se extraiga en una función a parte y luego sea llamada en los diferentes servivios donde este utilziada. Y NO copiar el mismo bloque de codigo en todas los servicio o metodos.
+
 ---
 
 ### Paso 10 - Actualizar controllers con `mine`, `PATCH`, `DELETE` y filtros
@@ -1450,12 +1489,12 @@ Ahora el modulo ya cubre el ciclo minimo de vida del producto:
 
 Al cerrar este checkpoint deberia pasar esto:
 
-1. Usuario A crea un producto
-2. Usuario A lo ve en `GET /products/mine`
-3. Usuario A lo edita con `PATCH /products/:id`
-4. Usuario B intenta editar y recibe `403`
-5. Usuario A lo elimina con `DELETE /products/:id`
-6. El producto ya no aparece en `GET /public/products`
+1. Usuario A crea un producto con `POST /products` (privado, requiere Bearer token del usuario A)
+2. Usuario A lo ve en `GET /products/mine` (privado, requiere Bearer token del usuario A)
+3. Usuario A lo edita con `PATCH /products/:id` (privado, requiere Bearer token del usuario A)
+4. Usuario B intenta editar el mismo producto con `PATCH /products/:id` (privado, requiere Bearer token del usuario B) y recibe `403`
+5. Usuario A lo elimina con `DELETE /products/:id` (privado, requiere Bearer token del usuario A)
+6. El producto ya no aparece en `GET /public/products` (publico)
 
 ### Payload de prueba para `PATCH /products/:id`
 
@@ -1466,12 +1505,24 @@ Al cerrar este checkpoint deberia pasar esto:
 }
 ```
 
+### Recordatorio para Postman o Thunder
+
+- `GET /products/mine`, `PATCH /products/:id` y `DELETE /products/:id` son privados
+- en esas requests hace falta `Authorization: Bearer <access_token>`
+- los filtros sobre `GET /public/products` siguen siendo publicos y se prueban sin token
+
 ### Filtros utiles para probar
 
+Todos estos ejemplos usan `GET /public/products`, asi que son pruebas de endpoint publico y no requieren token:
+
 - `GET /public/products?category=bread`
-- `GET /public/products?paymentOption=mercado_pago`
+- `GET /public/products?  =mercado_pago`
 - `GET /public/products?ownerId=<userId>`
 - `GET /public/products?minPrice=10&maxPrice=30`
+
+### Nota de compatibilidad
+
+En este repo estamos usando `mongoose@9`, asi que en el DAO conviene tipar los filtros con un tipo local del recurso en vez de depender de `FilterQuery`, que cambio respecto de versiones anteriores.
 
 ---
 
@@ -1839,11 +1890,11 @@ export class ProductsModule {}
 
 Al cerrar este checkpoint deberia pasar esto:
 
-1. Crear un producto
-2. Comentar con un usuario autenticado
-3. Leer comentarios con otro usuario autenticado
+1. Crear un producto con `POST /products` (privado, requiere Bearer token)
+2. Comentar con un usuario autenticado en `POST /products/:id/comments` (privado, requiere Bearer token)
+3. Leer comentarios con otro usuario autenticado en `GET /products/:id/comments` (privado, requiere Bearer token)
 4. Intentar leer comentarios sin JWT y recibir `401`
-5. Confirmar que el detalle publico del producto sigue sin comentarios
+5. Confirmar que el detalle publico del producto sigue sin comentarios desde `GET /public/products/:id` (publico)
 
 ### Payload de prueba para `POST /products/:id/comments`
 
@@ -1852,6 +1903,12 @@ Al cerrar este checkpoint deberia pasar esto:
   "message": "Me interesa, aceptas entrega manana?"
 }
 ```
+
+### Recordatorio para Postman o Thunder
+
+- `POST /products/:id/comments` y `GET /products/:id/comments` son privados
+- para ambos hace falta enviar `Authorization: Bearer <access_token>`
+- si queres comprobar el `401`, hace la misma request sin header `Authorization`
 
 ---
 
@@ -2285,10 +2342,15 @@ export class ProductsModule {}
 
 Al cerrar este checkpoint deberia pasar esto:
 
-1. Guardar favorito con `POST /favorites/:productId`
-2. Verlo en `GET /favorites/me`
-3. Intentar guardar el mismo producto de nuevo y recibir `409`
-4. Quitar favorito con `DELETE /favorites/:productId`
+1. Guardar favorito con `POST /favorites/:productId` (privado, requiere Bearer token)
+2. Verlo en `GET /favorites/me` (privado, requiere Bearer token)
+3. Intentar guardar el mismo producto de nuevo con `POST /favorites/:productId` (privado, requiere Bearer token) y recibir `409`
+4. Quitar favorito con `DELETE /favorites/:productId` (privado, requiere Bearer token)
+
+### Recordatorio para Postman o Thunder
+
+- toda la feature de favoritos es privada
+- en las tres requests hace falta `Authorization: Bearer <access_token>`
 
 ---
 
@@ -2435,6 +2497,7 @@ La mejor prueba de que el checkpoint esta bien cerrado es poder mostrarlo funcio
 - lista de opciones de pago permitidas
 - ejemplo de body para crear producto
 - ejemplo de body para comentar
+- ejemplo de header `Authorization: Bearer <access_token>` para endpoints privados
 - significado de `isActive`
 - que endpoints son publicos y cuales requieren JWT
 

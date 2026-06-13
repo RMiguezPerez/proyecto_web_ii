@@ -1,98 +1,151 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Proyecto Web 2
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API en NestJS con autenticacion JWT, usuarios y un primer modulo de productos para un marketplace.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Stack
 
-## Description
+- NestJS
+- MongoDB + Mongoose
+- Passport JWT
+- Class Validator / Class Transformer
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Variables de entorno
 
-## Project setup
+Crear un archivo `.env` con estas claves:
 
-```bash
-$ npm install
+```env
+MONGODB_URI=mongodb://...
+JWT_SECRET=un-secret-seguro
+JWT_EXPIRATION=1h
+PORT=3004
 ```
 
-## Compile and run the project
+## Instalacion y ejecucion
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
+npm run start:dev
 ```
 
-## Run tests
+Build:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run build
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Tests:
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run test
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Autenticacion
 
-## Resources
+Flujo basico:
 
-Check out a few resources that may come in handy when working with NestJS:
+1. Registrar usuario con `POST /auth/register`
+2. Loguear con `POST /auth/login`
+3. Copiar `access_token`
+4. Enviar `Authorization: Bearer <access_token>` en los endpoints protegidos
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+Ejemplo de header:
 
-## Support
+```http
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+Nota importante:
 
-## Stay in touch
+- `POST /products` requiere JWT
+- el `ownerId` no se manda en el body
+- `req.user.userId` llega como `string` desde la strategy JWT
+- el service de productos convierte ese valor a `Types.ObjectId` antes de persistirlo
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## Endpoints actuales
 
-## License
+Publicos:
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /public/products`
+- `GET /public/products/:id`
+
+Protegidos con JWT:
+
+- `GET /auth/profile`
+- `POST /products`
+- `POST /users`
+- `GET /users`
+- `GET /users/:id`
+- `PUT /users/:id`
+- `DELETE /users/:id`
+
+## Crear producto
+
+`POST /products`
+
+Header requerido:
+
+```http
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+Body de ejemplo:
+
+```json
+{
+  "name": "Sourdough Bread",
+  "description": "Pan de masa madre horneado en el dia",
+  "price": 18.5,
+  "category": "bread",
+  "paymentOptions": ["cash", "mercado_pago"],
+  "imagesBase64": [
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA"
+  ]
+}
+```
+
+Categorias disponibles:
+
+- `bread`
+- `pastry`
+- `sandwich`
+- `salad`
+- `drink`
+- `dessert`
+
+Opciones de pago disponibles:
+
+- `cash`
+- `debit_card`
+- `credit_card`
+- `bank_transfer`
+- `mercado_pago`
+
+## Catalogo publico
+
+`GET /public/products` lista solo productos activos.
+
+Filtros soportados por query string:
+
+- `category`
+- `paymentOption`
+- `ownerId`
+- `minPrice`
+- `maxPrice`
+
+Ejemplos:
+
+```http
+GET /public/products?category=bread
+GET /public/products?paymentOption=mercado_pago
+GET /public/products?ownerId=6a2320b421953f49f18305ae
+GET /public/products?minPrice=10&maxPrice=30
+```
+
+## Documentacion del repo
+
+- `clase-4-pasos.md`: de CRUD a auth con JWT
+- `clase-5-pasos.md`: de auth a marketplace con products
+- `clase-arquitectura-users-auth.md`: explicacion de arquitectura y auth
