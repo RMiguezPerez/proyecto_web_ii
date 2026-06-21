@@ -1,3 +1,4 @@
+// src/products/dto/create-product.dto.ts
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,

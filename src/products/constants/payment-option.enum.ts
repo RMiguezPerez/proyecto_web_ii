@@ -1,3 +1,4 @@
+// src/products/constants/payment-option.enum.ts
 export enum PaymentOption {
   CASH = 'cash',
   DEBIT_CARD = 'debit_card',

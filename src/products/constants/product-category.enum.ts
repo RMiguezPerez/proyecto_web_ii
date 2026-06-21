@@ -1,3 +1,4 @@
+// src/products/constants/product-category.enum.ts
 export enum ProductCategory {
   BREAD = 'bread',
   PASTRY = 'pastry',

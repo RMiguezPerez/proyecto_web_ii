@@ -1,3 +1,4 @@
+// src/products/schemas/product.schema.ts
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { User } from '../../users/schemas/user.schema';
@@ -8,7 +9,6 @@ import { ProductCategory } from '../constants/product-category.enum';
 export class Product extends Document {
   @Prop({ type: Types.ObjectId, ref: User.name, required: true, index: true })
   ownerId: Types.ObjectId;
-
 
   @Prop({ required: true, trim: true })
   name: string;

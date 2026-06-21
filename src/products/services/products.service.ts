@@ -1,3 +1,4 @@
+// src/products/services/products.service.ts
 import {
   ForbiddenException,
   Inject,
@@ -6,16 +7,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { plainToClass } from 'class-transformer';
+import { Types } from 'mongoose';
 import { UsersService } from '../../users/services/users.service';
 import { CreateProductDto } from '../dto/create-product.dto';
 import { ListProductsQueryDto } from '../dto/list-products-query.dto';
+import {
+  PublicProductOwnerDto,
+  PublicProductResponseDto,
+} from '../dto/public-product-responde.dto';
 import { ProductResponseDto } from '../dto/product-response.dto';
+import { UpdateProductDto } from '../dto/update-product.dto';
 import type { IProductsRepository } from '../repositories/products.repository';
 import { Product } from '../schemas/product.schema';
-import { PublicProductOwnerDto, PublicProductResponseDto } from '../dto/public-product-responde.dto';
-import { Types } from 'mongoose';
-import { UpdateProductDto } from '../dto/update-product.dto';
-
 
 @Injectable()
 export class ProductsService {
@@ -49,12 +52,7 @@ export class ProductsService {
   }
 
   async findPublicById(id: string): Promise<PublicProductResponseDto> {
-    const product = await this.productsRepository.findPublicById(id);
-
-    if (!product) {
-      throw new NotFoundException('Product not found');
-    }
-
+    const product = await this.findActiveEntityOrThrow(id);
     const owner = await this.usersService.findById(product.ownerId.toString());
 
     return {
@@ -66,22 +64,6 @@ export class ProductsService {
       } as PublicProductOwnerDto,
     };
   }
-
-  private toProductResponse(product: Product): ProductResponseDto {
-    return plainToClass(ProductResponseDto, {
-      id: product._id.toString(),
-      ownerId: product.ownerId.toString(),
-      name: product.name,
-      description: product.description,
-      price: product.price,
-      category: product.category,
-      paymentOptions: product.paymentOptions,
-      imagesBase64: product.imagesBase64,
-      isActive: product.isActive,
-    });
-  }
-
-
 
   async findMine(ownerId: string): Promise<ProductResponseDto[]> {
     const products = await this.productsRepository.findMine(ownerId);
@@ -140,5 +122,19 @@ export class ProductsService {
     return product;
   }
 
-
+  private toProductResponse(product: Product): ProductResponseDto {
+    return plainToClass(ProductResponseDto, {
+      id: product._id.toString(),
+      ownerId: product.ownerId.toString(),
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      category: product.category,
+      paymentOptions: product.paymentOptions,
+      imagesBase64: product.imagesBase64,
+      isActive: product.isActive,
+      createdAt: (product as any).createdAt,
+      updatedAt: (product as any).updatedAt,
+    });
+  }
 }
