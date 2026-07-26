@@ -1,4 +1,5 @@
 // src/products/products.module.ts
+// src/products/products.module.ts
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UsersModule } from '../users/users.module';
@@ -6,21 +7,27 @@ import { FavoritesController } from './controllers/favorites.controller';
 import { ProductCommentsController } from './controllers/product-comments.controller';
 import { ProductsController } from './controllers/products.controller';
 import { PublicProductsController } from './controllers/public-products.controller';
+import { CartController } from './controllers/cart.controller'; // <--- 1. Importar CartController
 import { FavoritesMongooseDao } from './dao/favorites.mongoose.dao';
 import { ProductCommentsMongooseDao } from './dao/product-comments.mongoose.dao';
 import { ProductsMongooseDao } from './dao/products.mongoose.dao';
+import { CartMongooseDao } from './dao/cart.mongoose.dao'; // <--- 2. Importar CartMongooseDao
 import { FavoritesRepository } from './repositories/favorites.repository';
 import { ProductCommentsRepository } from './repositories/product-comments.repository';
 import { ProductsRepository } from './repositories/products.repository';
+import { CartRepository } from './repositories/cart.repository'; // <--- 3. Importar CartRepository
 import { Favorite, FavoriteSchema } from './schemas/favorite.schema';
 import {
   ProductComment,
   ProductCommentSchema,
 } from './schemas/product-comment.schema';
 import { Product, ProductSchema } from './schemas/product.schema';
+import { Cart, CartSchema } from './schemas/cart.schema'; 
+
 import { FavoritesService } from './services/favorites.service';
 import { ProductCommentsService } from './services/product-comments.service';
 import { ProductsService } from './services/products.service';
+import { CartService } from './services/cart.service';
 
 @Module({
   imports: [
@@ -29,6 +36,7 @@ import { ProductsService } from './services/products.service';
       { name: Product.name, schema: ProductSchema },
       { name: ProductComment.name, schema: ProductCommentSchema },
       { name: Favorite.name, schema: FavoriteSchema },
+      { name: Cart.name, schema: CartSchema },
     ]),
   ],
   controllers: [
@@ -36,11 +44,13 @@ import { ProductsService } from './services/products.service';
     PublicProductsController,
     ProductCommentsController,
     FavoritesController,
+    CartController,
   ],
   providers: [
     ProductsService,
     ProductCommentsService,
     FavoritesService,
+    CartService,
     {
       provide: 'IProductsDao',
       useClass: ProductsMongooseDao,
@@ -64,6 +74,14 @@ import { ProductsService } from './services/products.service';
     {
       provide: 'IFavoritesRepository',
       useClass: FavoritesRepository,
+    },
+    {
+      provide: 'ICartDao',
+      useClass: CartMongooseDao,
+    },
+    {
+      provide: 'ICartRepository',
+      useClass: CartRepository,
     },
   ],
   exports: [ProductsService],
